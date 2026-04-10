@@ -26,3 +26,6 @@ Thumbs.db
 # Build
 dist/
 build/
+
+# Old app folder (to be deleted)
+app/
