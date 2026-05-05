@@ -14,7 +14,7 @@ export default function BottomNav() {
   const path = usePathname()
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-stone-200 z-50"
-         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+         style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 1.5rem)' }}>
       <div className="flex items-center justify-around h-16 max-w-lg mx-auto">
         {tabs.map(({ href, label, icon: Icon, primary }) => {
           const active = path === href || (href !== '/' && path.startsWith(href))
