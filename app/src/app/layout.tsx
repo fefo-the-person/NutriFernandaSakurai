@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
-import BottomNav from '@/components/BottomNav'
+import AuthProvider from '@/components/AuthProvider'
 
 export const metadata: Metadata = {
   title: 'Fernanda Sakurai · Nutricionista',
@@ -29,10 +29,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-capable" content="yes" />
       </head>
       <body>
-        <main className="max-w-lg mx-auto min-h-screen pb-safe">
+        {/*
+          AuthProvider handles:
+          - Session checking on load
+          - Redirecting unauthenticated users to /login
+          - Rendering BottomNav only for authenticated users
+          - Keeping /login as a public route
+        */}
+        <AuthProvider>
           {children}
-        </main>
-        <BottomNav />
+        </AuthProvider>
       </body>
     </html>
   )

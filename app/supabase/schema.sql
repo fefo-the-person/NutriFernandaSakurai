@@ -36,8 +36,9 @@ CREATE TABLE expenses (
 
 -- ─────────────────────────────────────────────────────────────
 -- CRM VIEW – per-patient aggregated metrics
+-- security_invoker = true ensures RLS policies are respected
 -- ─────────────────────────────────────────────────────────────
-CREATE OR REPLACE VIEW patient_crm AS
+CREATE OR REPLACE VIEW patient_crm WITH (security_invoker = true) AS
 SELECT
   p.id,
   p.cpf,
@@ -61,8 +62,9 @@ GROUP BY p.id, p.cpf, p.name, p.notes;
 
 -- ─────────────────────────────────────────────────────────────
 -- MONTHLY SUMMARY VIEW
+-- security_invoker = true ensures RLS policies are respected
 -- ─────────────────────────────────────────────────────────────
-CREATE OR REPLACE VIEW monthly_summary AS
+CREATE OR REPLACE VIEW monthly_summary WITH (security_invoker = true) AS
 SELECT
   TO_CHAR(month, 'YYYY-MM')                AS month,
   COALESCE(revenue, 0)                     AS revenue,
@@ -107,12 +109,15 @@ CREATE TRIGGER patients_updated_at
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- ─────────────────────────────────────────────────────────────
--- ROW LEVEL SECURITY (enable after setting up Supabase Auth)
--- Uncomment once you have authentication set up
+-- ROW LEVEL SECURITY – only authenticated users can access data
 -- ─────────────────────────────────────────────────────────────
--- ALTER TABLE patients       ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE consultations  ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE expenses       ENABLE ROW LEVEL SECURITY;
--- CREATE POLICY "auth_only" ON patients      FOR ALL USING (auth.role() = 'authenticated');
--- CREATE POLICY "auth_only" ON consultations FOR ALL USING (auth.role() = 'authenticated');
--- CREATE POLICY "auth_only" ON expenses      FOR ALL USING (auth.role() = 'authenticated');
+ALTER TABLE patients       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE consultations  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE expenses       ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "authenticated_users_all" ON patients      FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "authenticated_users_all" ON consultations FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "authenticated_users_all" ON expenses      FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+GRANT SELECT ON public.patient_crm     TO authenticated;
+GRANT SELECT ON public.monthly_summary TO authenticated;
