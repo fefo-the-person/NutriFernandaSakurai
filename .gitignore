@@ -27,5 +27,9 @@ Thumbs.db
 dist/
 build/
 
-# Old app folder (to be deleted)
-app/
+# Next.js dependencies and build artifacts inside app folder
+app/node_modules/
+app/.next/
+app/out/
+app/dist/
+app/build/
