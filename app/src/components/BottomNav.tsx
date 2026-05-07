@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 const tabs = [
   { href: '/',              label: 'Hoje',      icon: HomeIcon },
   { href: '/pacientes',     label: 'Pacientes', icon: UsersIcon },
-  { href: '/nova-consulta', label: 'Registrar', icon: PlusIcon, primary: true },
+  { href: '/novo-registro', label: 'Registrar', icon: PlusIcon, primary: true },
   { href: '/financeiro',    label: 'Finanças',  icon: ChartIcon },
   { href: '/alertas',       label: 'Alertas',   icon: BellIcon },
 ]

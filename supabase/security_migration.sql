@@ -1,49 +1,52 @@
--- ─────────────────────────────────────────────────────────────
--- SECURITY MIGRATION – Nutri Fernanda Sakurai
--- Run this in the Supabase SQL Editor to fix all security warnings
--- ─────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════════
+-- SEGURANÇA – Nutri Fernanda Sakurai
+-- Executa no Supabase SQL Editor (uma única vez)
+-- Resolve todos os avisos de segurança e aplica conformidade LGPD
+-- ═══════════════════════════════════════════════════════════════
 
--- ─────────────────────────────────────────────────────────────
--- STEP 1: Enable Row Level Security on all tables
--- ─────────────────────────────────────────────────────────────
-ALTER TABLE public.patients       ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.consultations  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.expenses       ENABLE ROW LEVEL SECURITY;
+-- ───────────────────────────────────────────────────────────────
+-- 1. ROW LEVEL SECURITY – bloqueia acesso público às tabelas
+-- ───────────────────────────────────────────────────────────────
+ALTER TABLE public.patients      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.consultations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.expenses      ENABLE ROW LEVEL SECURITY;
 
--- ─────────────────────────────────────────────────────────────
--- STEP 2: Create RLS policies — only authenticated users can access data
--- This means only someone logged in via Supabase Auth can read/write
--- ─────────────────────────────────────────────────────────────
+-- ───────────────────────────────────────────────────────────────
+-- 2. REMOVE acesso anônimo (anon role) das tabelas
+--    Isso impede qualquer leitura sem login, mesmo com a API pública
+-- ───────────────────────────────────────────────────────────────
+REVOKE ALL ON public.patients      FROM anon;
+REVOKE ALL ON public.consultations FROM anon;
+REVOKE ALL ON public.expenses      FROM anon;
 
--- PATIENTS
-CREATE POLICY "authenticated_users_all" ON public.patients
-  FOR ALL
-  TO authenticated
-  USING (true)
-  WITH CHECK (true);
+-- ───────────────────────────────────────────────────────────────
+-- 3. POLÍTICAS RLS – somente usuários autenticados têm acesso
+-- ───────────────────────────────────────────────────────────────
 
--- CONSULTATIONS
-CREATE POLICY "authenticated_users_all" ON public.consultations
-  FOR ALL
-  TO authenticated
-  USING (true)
-  WITH CHECK (true);
+-- Remove políticas antigas se existirem (evita conflito)
+DROP POLICY IF EXISTS "authenticated_users_all" ON public.patients;
+DROP POLICY IF EXISTS "authenticated_users_all" ON public.consultations;
+DROP POLICY IF EXISTS "authenticated_users_all" ON public.expenses;
+DROP POLICY IF EXISTS "auth_only" ON public.patients;
+DROP POLICY IF EXISTS "auth_only" ON public.consultations;
+DROP POLICY IF EXISTS "auth_only" ON public.expenses;
 
--- EXPENSES
-CREATE POLICY "authenticated_users_all" ON public.expenses
-  FOR ALL
-  TO authenticated
-  USING (true)
-  WITH CHECK (true);
+-- Cria políticas: somente usuário logado pode ler/criar/editar/deletar
+CREATE POLICY "somente_autenticados" ON public.patients
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
--- ─────────────────────────────────────────────────────────────
--- STEP 3: Fix Security Definer Views
--- Recreate both views with security_invoker = true so they
--- respect the calling user's permissions and RLS policies
--- instead of running as the view creator (superuser)
--- ─────────────────────────────────────────────────────────────
+CREATE POLICY "somente_autenticados" ON public.consultations
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
--- Drop and recreate patient_crm with security_invoker
+CREATE POLICY "somente_autenticados" ON public.expenses
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- ───────────────────────────────────────────────────────────────
+-- 4. VIEWS – recria com security_invoker para respeitar o RLS
+--    Sem isso, as views rodam como superusuário e ignoram o RLS
+-- ───────────────────────────────────────────────────────────────
+
+-- View CRM de pacientes
 DROP VIEW IF EXISTS public.patient_crm;
 CREATE OR REPLACE VIEW public.patient_crm
   WITH (security_invoker = true)
@@ -60,65 +63,63 @@ SELECT
   COALESCE(AVG(c.amount), 0)                 AS avg_ticket,
   CURRENT_DATE - MAX(c.date)                 AS days_since_last,
   CASE
-    WHEN MAX(c.date) IS NULL                         THEN 'Sem consultas'
-    WHEN CURRENT_DATE - MAX(c.date) <= 60            THEN 'Ativo'
-    WHEN CURRENT_DATE - MAX(c.date) <= 120           THEN 'Em risco'
-    ELSE                                                  'Inativo'
+    WHEN MAX(c.date) IS NULL              THEN 'Sem consultas'
+    WHEN CURRENT_DATE - MAX(c.date) <= 60 THEN 'Ativo'
+    WHEN CURRENT_DATE - MAX(c.date) <= 120 THEN 'Em risco'
+    ELSE                                       'Inativo'
   END                                        AS status
 FROM public.patients p
 LEFT JOIN public.consultations c ON p.id = c.patient_id
 GROUP BY p.id, p.cpf, p.name, p.notes;
 
--- Drop and recreate monthly_summary with security_invoker
+-- View resumo mensal
 DROP VIEW IF EXISTS public.monthly_summary;
 CREATE OR REPLACE VIEW public.monthly_summary
   WITH (security_invoker = true)
 AS
 SELECT
-  TO_CHAR(month, 'YYYY-MM')                AS month,
-  COALESCE(revenue, 0)                     AS revenue,
-  COALESCE(consultation_count, 0)          AS consultation_count,
-  COALESCE(expenses_total, 0)              AS expenses_total,
+  TO_CHAR(month, 'YYYY-MM')                          AS month,
+  COALESCE(revenue, 0)                               AS revenue,
+  COALESCE(consultation_count, 0)                    AS consultation_count,
+  COALESCE(expenses_total, 0)                        AS expenses_total,
   COALESCE(revenue, 0) - COALESCE(expenses_total, 0) AS net_income
 FROM (
-  SELECT
-    DATE_TRUNC('month', generate_series(
-      (SELECT MIN(date) FROM public.consultations),
-      NOW(),
-      '1 month'::interval
-    )) AS month
+  SELECT DATE_TRUNC('month', generate_series(
+    (SELECT MIN(date) FROM public.consultations),
+    NOW(),
+    '1 month'::interval
+  )) AS month
 ) months
 LEFT JOIN (
-  SELECT
-    DATE_TRUNC('month', date) AS m,
-    SUM(amount)               AS revenue,
-    COUNT(*)                  AS consultation_count
-  FROM public.consultations
-  GROUP BY 1
+  SELECT DATE_TRUNC('month', date) AS m,
+         SUM(amount)               AS revenue,
+         COUNT(*)                  AS consultation_count
+  FROM public.consultations GROUP BY 1
 ) c ON c.m = months.month
 LEFT JOIN (
-  SELECT
-    DATE_TRUNC('month', date) AS m,
-    SUM(amount)               AS expenses_total
-  FROM public.expenses
-  GROUP BY 1
+  SELECT DATE_TRUNC('month', date) AS m,
+         SUM(amount)               AS expenses_total
+  FROM public.expenses GROUP BY 1
 ) e ON e.m = months.month
 ORDER BY month DESC;
 
--- ─────────────────────────────────────────────────────────────
--- STEP 4: Grant view access to authenticated users
--- ─────────────────────────────────────────────────────────────
+-- ───────────────────────────────────────────────────────────────
+-- 5. Permissões das views — somente usuário autenticado pode ler
+-- ───────────────────────────────────────────────────────────────
+REVOKE ALL ON public.patient_crm    FROM anon;
+REVOKE ALL ON public.monthly_summary FROM anon;
 GRANT SELECT ON public.patient_crm    TO authenticated;
 GRANT SELECT ON public.monthly_summary TO authenticated;
 
--- ─────────────────────────────────────────────────────────────
--- VERIFICATION — run these SELECTs to confirm everything is set
--- ─────────────────────────────────────────────────────────────
--- Check RLS is enabled:
--- SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public';
+-- ───────────────────────────────────────────────────────────────
+-- VERIFICAÇÃO – rode estas queries para confirmar que tudo está ok
+-- ───────────────────────────────────────────────────────────────
+-- RLS ativado nas tabelas:
+SELECT tablename, rowsecurity FROM pg_tables
+  WHERE schemaname = 'public'
+  ORDER BY tablename;
 
--- Check policies exist:
--- SELECT tablename, policyname, roles FROM pg_policies WHERE schemaname = 'public';
-
--- Check views have security_invoker:
--- SELECT viewname, definition FROM pg_views WHERE schemaname = 'public';
+-- Políticas criadas:
+SELECT tablename, policyname, roles, cmd
+  FROM pg_policies WHERE schemaname = 'public'
+  ORDER BY tablename;
