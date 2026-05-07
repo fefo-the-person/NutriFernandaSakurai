@@ -18,7 +18,7 @@ export default function NovoRegistroPage() {
           style={{ background: 'linear-gradient(135deg,#6ac4b7,#318086)' }}
         >
           <div className="flex items-center gap-4">
-            <span className="text-3xl">🩺</span>
+            <span className="text-3xl">📋</span>
             <div>
               <p className="font-bold text-lg leading-tight">Consulta</p>
               <p className="text-sm opacity-70 mt-0.5">Registrar atendimento com paciente</p>
