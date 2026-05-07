@@ -363,6 +363,122 @@ function Drawer({
   )
 }
 
+// ─── Net Income Chart ─────────────────────────────────────────────────────────
+
+function NetIncomeChart({
+  summaries,
+  consultations,
+  selected,
+}: {
+  summaries: MonthlySummary[]
+  consultations: ConsultationWithPatient[]
+  selected: string
+}) {
+  const sorted = [...summaries].sort((a, b) => a.month.localeCompare(b.month))
+  if (sorted.length === 0) return null
+
+  // Channel split over the displayed period
+  const months12 = new Set(sorted.map(s => s.month))
+  const cons12   = consultations.filter(c => months12.has(c.date.slice(0, 7)))
+  const total12  = cons12.length || 1
+  const presencialPct = Math.round(cons12.filter(c => c.channel === 'PRESENCIAL').length / total12 * 100)
+  const onlinePct     = 100 - presencialPct
+
+  // Compact amount label: 1403 → "1,4k", -500 → "-500"
+  function fmtShort(v: number): string {
+    const abs  = Math.abs(v)
+    const sign = v < 0 ? '-' : ''
+    if (abs >= 1000) return `${sign}${(abs / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}k`
+    return `${sign}${Math.round(abs)}`
+  }
+
+  // SVG dimensions — padT=22 leaves headroom for amount labels above tallest bar
+  const W = 340, H = 165
+  const padL = 4, padR = 4, padT = 22, padB = 24
+  const chartW = W - padL - padR
+  const chartH = H - padT - padB
+
+  const values = sorted.map(s => s.net_income)
+  const minVal = Math.min(...values, 0)
+  const maxVal = Math.max(...values, 0)
+  const range  = maxVal - minVal || 1
+
+  const yFor  = (v: number) => padT + chartH - ((v - minVal) / range) * chartH
+  const zeroY = yFor(0)
+
+  const barSlot = chartW / sorted.length
+  const barW    = barSlot * 0.55
+
+  return (
+    <div className="bg-white rounded-2xl p-4 mb-5 border border-stone-100 shadow-sm">
+      <div className="flex items-start justify-between mb-2">
+        <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide">
+          Resultado líquido — 12 meses
+        </p>
+        <div className="text-right space-y-0.5">
+          <p className="text-[10px] font-semibold" style={{ color: '#318086' }}>🏢 {presencialPct}% presencial</p>
+          <p className="text-[10px] font-semibold text-violet-500">💻 {onlinePct}% online</p>
+        </div>
+      </div>
+
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+        {/* Zero baseline */}
+        <line x1={padL} y1={zeroY} x2={W - padR} y2={zeroY} stroke="#e7e5e4" strokeWidth="1" />
+
+        {sorted.map((s, i) => {
+          const cx   = padL + i * barSlot + barSlot / 2
+          const x    = cx - barW / 2
+          const v    = s.net_income
+          const top  = v >= 0 ? yFor(v) : zeroY
+          const bh   = Math.max(Math.abs(yFor(v) - zeroY), 2)
+          const fill = v >= 0 ? '#318086' : '#f87171'
+          const active = s.month === selected
+
+          const [, mo] = s.month.split('-')
+          const label  = new Date(2000, parseInt(mo) - 1)
+            .toLocaleDateString('pt-BR', { month: 'short' })
+            .replace('.', '')
+
+          // Amount label: above positive bars, below negative bars
+          const amtY = v >= 0 ? top - 3 : zeroY + bh + 9
+
+          return (
+            <g key={s.month}>
+              <rect
+                x={x} y={top} width={barW} height={bh}
+                fill={fill} rx="3"
+                opacity={active ? 1 : 0.35}
+              />
+              {/* amount label */}
+              <text
+                x={cx} y={amtY}
+                textAnchor="middle" fontSize="7"
+                fill={fill}
+                opacity={active ? 1 : 0.45}
+                fontWeight={active ? '700' : '400'}
+              >
+                {fmtShort(v)}
+              </text>
+              {/* tick mark for selected month */}
+              {active && (
+                <rect x={cx - 1} y={H - padB + 4} width={2} height={3} fill={fill} rx="1" />
+              )}
+              <text
+                x={cx} y={H - 6}
+                textAnchor="middle" fontSize="8"
+                fill={active ? '#57534e' : '#c4bfbb'}
+                fontWeight={active ? '700' : '400'}
+              >
+                {label}
+              </text>
+            </g>
+          )
+        })}
+      </svg>
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function FinanceiroPage() {
@@ -374,9 +490,6 @@ export default function FinanceiroPage() {
   const [drawerType, setDrawerType]     = useState<DrawerType>(null)
   const [saving, setSaving]             = useState(false)
 
-  const [channelData, setChannelData] = useState<{
-    online: number; presencial: number; onlineRev: number; presencialRev: number
-  }>({ online: 0, presencial: 0, onlineRev: 0, presencialRev: 0 })
 
   const loadData = useCallback(async () => {
     const [{ data: s }, { data: e }, { data: c }, { data: p }] = await Promise.all([
@@ -400,13 +513,6 @@ export default function FinanceiroPage() {
     }))
     setConsultations(consWithNames)
 
-    setChannelData({
-      online:        cons.filter(x => x.channel === 'ONLINE').length,
-      presencial:    cons.filter(x => x.channel === 'PRESENCIAL').length,
-      onlineRev:     cons.filter(x => x.channel === 'ONLINE').reduce((a, x) => a + x.amount, 0),
-      presencialRev: cons.filter(x => x.channel === 'PRESENCIAL').reduce((a, x) => a + x.amount, 0),
-    })
-
     return months
   }, [])
 
@@ -427,8 +533,6 @@ export default function FinanceiroPage() {
     const [y, m] = ym.split('-')
     return new Date(Number(y), Number(m) - 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
   }
-
-  const totalCons = channelData.online + channelData.presencial || 1
 
   async function handleSaveExpense(exp: Expense) {
     setSaving(true)
@@ -532,31 +636,12 @@ export default function FinanceiroPage() {
             </div>
           </div>
 
-          {/* Channel split (overall historical) */}
-          <div className="bg-white rounded-2xl p-4 mb-5 border border-stone-100 shadow-sm">
-            <p className="text-xs font-semibold text-stone-500 mb-3 uppercase tracking-wide">Modalidade — histórico total</p>
-            <div className="flex gap-4 mb-3">
-              <div className="flex-1 text-center">
-                <p className="text-xl font-bold text-brand-charcoal">{channelData.presencial}</p>
-                <p className="text-xs text-stone-400 mt-0.5">🏥 Presencial</p>
-                <p className="text-xs font-medium mt-0.5" style={{ color: '#318086' }}>{formatBRL(channelData.presencialRev)}</p>
-              </div>
-              <div className="w-px bg-stone-100" />
-              <div className="flex-1 text-center">
-                <p className="text-xl font-bold text-brand-charcoal">{channelData.online}</p>
-                <p className="text-xs text-stone-400 mt-0.5">💻 Online</p>
-                <p className="text-xs font-medium mt-0.5 text-violet-600">{formatBRL(channelData.onlineRev)}</p>
-              </div>
-            </div>
-            <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all"
-                   style={{ width: `${(channelData.presencial / totalCons) * 100}%`, backgroundColor: '#318086' }} />
-            </div>
-            <div className="flex justify-between mt-1">
-              <span className="text-[10px] text-stone-400">Presencial {Math.round(channelData.presencial / totalCons * 100)}%</span>
-              <span className="text-[10px] text-stone-400">Online {Math.round(channelData.online / totalCons * 100)}%</span>
-            </div>
-          </div>
+          {/* 12-month net income chart */}
+          <NetIncomeChart
+            summaries={summaries}
+            consultations={consultations}
+            selected={selected}
+          />
 
           {/* Expense list (quick view, still shown below) */}
           {monthExpenses.length > 0 && (
