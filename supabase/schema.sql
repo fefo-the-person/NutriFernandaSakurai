@@ -116,3 +116,22 @@ CREATE TRIGGER patients_updated_at
 -- CREATE POLICY "auth_only" ON patients      FOR ALL USING (auth.role() = 'authenticated');
 -- CREATE POLICY "auth_only" ON consultations FOR ALL USING (auth.role() = 'authenticated');
 -- CREATE POLICY "auth_only" ON expenses      FOR ALL USING (auth.role() = 'authenticated');
+
+-- ─────────────────────────────────────────────────────────────
+-- EXPLICIT GRANTS – required for Supabase Data API (supabase-js)
+-- From May 30 2026 new projects no longer auto-grant public schema
+-- tables; explicit grants are mandatory for PostgREST to see them.
+-- ─────────────────────────────────────────────────────────────
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.patients      TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.consultations TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.expenses      TO authenticated;
+
+REVOKE ALL ON public.patients      FROM anon;
+REVOKE ALL ON public.consultations FROM anon;
+REVOKE ALL ON public.expenses      FROM anon;
+
+GRANT SELECT ON public.patient_crm     TO authenticated;
+GRANT SELECT ON public.monthly_summary TO authenticated;
+
+REVOKE ALL ON public.patient_crm     FROM anon;
+REVOKE ALL ON public.monthly_summary FROM anon;
