@@ -745,8 +745,9 @@ export default function FinanceiroPage() {
       firstVisitMap[c.patient_id] = mo
     }
   }
-  const newPatientCount     = [...monthPatientIds].filter(pid => firstVisitMap[pid] === selected).length
-  const totalPatientCount   = monthPatientIds.size
+  const monthPatientIdsArr  = Array.from(monthPatientIds)
+  const newPatientCount     = monthPatientIdsArr.filter(pid => firstVisitMap[pid] === selected).length
+  const totalPatientCount   = monthPatientIdsArr.length
 
   return (
     <div className="px-4 pt-12 pb-4">
