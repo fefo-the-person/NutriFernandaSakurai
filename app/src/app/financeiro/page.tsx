@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { MonthlySummary, Expense, Consultation, ConsultationChannel, OtherIncome, formatBRL } from '@/lib/types'
+import { MonthlySummary, Expense, Consultation, ConsultationChannel, OtherIncome, formatBRL, formatCPF } from '@/lib/types'
 
 type DrawerType = 'receita' | 'despesas' | 'resultado' | null
 
@@ -15,6 +15,7 @@ const INCOME_CATEGORY_ICON: Record<string, string> = {
 
 interface ConsultationWithPatient extends Consultation {
   patient_name: string
+  patient_cpf: string | null
 }
 
 // ─── Edit forms ───────────────────────────────────────────────────────────────
@@ -300,6 +301,9 @@ function Drawer({
                       <div className="bg-stone-50 rounded-2xl p-3 border border-stone-100 flex items-center gap-3">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-brand-charcoal truncate">{con.patient_name}</p>
+                          <p className="text-xs text-stone-400">
+                            {formatCPF(con.patient_cpf)}
+                          </p>
                           <p className="text-xs text-stone-400">
                             {new Date(con.date + 'T12:00:00').toLocaleDateString('pt-BR')}
                             {' · '}
@@ -671,7 +675,7 @@ export default function FinanceiroPage() {
       supabase.from('monthly_summary').select('*').limit(12),
       supabase.from('expenses').select('*').order('date', { ascending: false }),
       supabase.from('consultations').select('*').order('date', { ascending: false }),
-      supabase.from('patients').select('id, name'),
+      supabase.from('patients').select('id, name, cpf'),
       supabase.from('other_income').select('*').order('date', { ascending: false }),
     ])
 
@@ -681,12 +685,13 @@ export default function FinanceiroPage() {
     setExpenses((e ?? []) as Expense[])
     setOtherIncome((oi ?? []) as OtherIncome[])
 
-    const patients = (p ?? []) as { id: string; name: string }[]
-    const patientMap = Object.fromEntries(patients.map(pt => [pt.id, pt.name]))
+    const patients = (p ?? []) as { id: string; name: string; cpf: string | null }[]
+    const patientMap = Object.fromEntries(patients.map(pt => [pt.id, { name: pt.name, cpf: pt.cpf }]))
     const cons = (c ?? []) as Consultation[]
     const consWithNames: ConsultationWithPatient[] = cons.map(co => ({
       ...co,
-      patient_name: patientMap[co.patient_id] ?? 'Paciente desconhecido',
+      patient_name: patientMap[co.patient_id]?.name ?? 'Paciente desconhecido',
+      patient_cpf:  patientMap[co.patient_id]?.cpf ?? null,
     }))
     setConsultations(consWithNames)
 
