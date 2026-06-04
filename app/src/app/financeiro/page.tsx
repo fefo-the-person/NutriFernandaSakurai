@@ -515,6 +515,144 @@ function NetIncomeChart({
   )
 }
 
+// ─── New vs Returning Patients Chart ─────────────────────────────────────────
+
+function NewVsReturningChart({
+  summaries,
+  consultations,
+  selected,
+}: {
+  summaries: MonthlySummary[]
+  consultations: ConsultationWithPatient[]
+  selected: string
+}) {
+  const sorted = [...summaries].sort((a, b) => a.month.localeCompare(b.month))
+  if (sorted.length === 0) return null
+
+  // Build map: patient_id → earliest consultation month
+  const firstVisit: Record<string, string> = {}
+  for (const c of consultations) {
+    const mo = c.date.slice(0, 7)
+    if (!firstVisit[c.patient_id] || mo < firstVisit[c.patient_id]) {
+      firstVisit[c.patient_id] = mo
+    }
+  }
+
+  // Per-month counts
+  const monthData = sorted.map(s => {
+    const seen = new Set(consultations.filter(c => c.date.startsWith(s.month)).map(c => c.patient_id))
+    let newPts = 0, returning = 0
+    seen.forEach(pid => {
+      if (firstVisit[pid] === s.month) newPts++
+      else returning++
+    })
+    return { month: s.month, new: newPts, returning, total: newPts + returning }
+  })
+
+  const maxTotal = Math.max(...monthData.map(d => d.total), 1)
+
+  // SVG dims
+  const W = 340, H = 155
+  const padL = 4, padR = 4, padT = 20, padB = 24
+  const chartW = W - padL - padR
+  const chartH = H - padT - padB
+  const barSlot = chartW / sorted.length
+  const barW    = barSlot * 0.55
+
+  // Selected-month totals for legend
+  const sel = monthData.find(d => d.month === selected) ?? { new: 0, returning: 0, total: 0 }
+  const selTotal = sel.total || 1
+  const newPct  = Math.round(sel.new / selTotal * 100)
+  const retPct  = 100 - newPct
+
+  return (
+    <div className="bg-white rounded-2xl p-4 mb-5 border border-stone-100 shadow-sm">
+      <div className="flex items-start justify-between mb-2">
+        <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide">
+          Pacientes — 12 meses
+        </p>
+        <div className="text-right space-y-0.5">
+          <p className="text-[10px] font-semibold" style={{ color: '#318086' }}>🆕 {newPct}% novos</p>
+          <p className="text-[10px] font-semibold text-violet-500">🔄 {retPct}% retorno</p>
+        </div>
+      </div>
+
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+        {monthData.map((d, i) => {
+          const cx      = padL + i * barSlot + barSlot / 2
+          const x       = cx - barW / 2
+          const active  = d.month === selected
+
+          const retH  = d.total > 0 ? (d.returning / maxTotal) * chartH : 0
+          const newH  = d.total > 0 ? (d.new       / maxTotal) * chartH : 0
+          const retY  = padT + chartH - retH - newH
+          const newY  = padT + chartH - newH
+
+          const [, mo] = d.month.split('-')
+          const label  = new Date(2000, parseInt(mo) - 1)
+            .toLocaleDateString('pt-BR', { month: 'short' })
+            .replace('.', '')
+
+          return (
+            <g key={d.month}>
+              {/* Returning segment (bottom, violet) */}
+              {retH > 0 && (
+                <rect x={x} y={retY} width={barW} height={retH}
+                  fill="#7c3aed" rx="2"
+                  opacity={active ? 0.75 : 0.2}
+                />
+              )}
+              {/* New segment (top, teal) */}
+              {newH > 0 && (
+                <rect x={x} y={newY} width={barW} height={newH}
+                  fill="#318086" rx="2"
+                  opacity={active ? 1 : 0.3}
+                />
+              )}
+              {/* Total count above bar */}
+              {d.total > 0 && (
+                <text
+                  x={cx} y={retY - 3}
+                  textAnchor="middle" fontSize="7"
+                  fill="#57534e"
+                  opacity={active ? 1 : 0.4}
+                  fontWeight={active ? '700' : '400'}
+                >
+                  {d.total}
+                </text>
+              )}
+              {/* Tick for selected */}
+              {active && (
+                <rect x={cx - 1} y={H - padB + 4} width={2} height={3} fill="#318086" rx="1" />
+              )}
+              <text
+                x={cx} y={H - 6}
+                textAnchor="middle" fontSize="8"
+                fill={active ? '#57534e' : '#c4bfbb'}
+                fontWeight={active ? '700' : '400'}
+              >
+                {label}
+              </text>
+            </g>
+          )
+        })}
+      </svg>
+
+      {/* Mini legend */}
+      <div className="flex gap-4 mt-1">
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#318086' }} />
+          <span className="text-[10px] text-stone-500">Novos</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#7c3aed', opacity: 0.75 }} />
+          <span className="text-[10px] text-stone-500">Retorno</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function FinanceiroPage() {
@@ -598,105 +736,131 @@ export default function FinanceiroPage() {
     setSaving(false)
   }
 
+  // Month stats derived from consultations
+  const monthPatientIds   = new Set(monthConsultations.map(c => c.patient_id))
+  const firstVisitMap: Record<string, string> = {}
+  for (const c of consultations) {
+    const mo = c.date.slice(0, 7)
+    if (!firstVisitMap[c.patient_id] || mo < firstVisitMap[c.patient_id]) {
+      firstVisitMap[c.patient_id] = mo
+    }
+  }
+  const newPatientCount     = [...monthPatientIds].filter(pid => firstVisitMap[pid] === selected).length
+  const totalPatientCount   = monthPatientIds.size
+
   return (
     <div className="px-4 pt-12 pb-4">
       <h1 className="font-display text-2xl font-bold text-brand-charcoal mb-5">Financeiro</h1>
-
-      {/* Month selector */}
-      <div className="flex gap-2 overflow-x-auto pb-2 mb-5">
-        {summaries.map(s => (
-          <button key={s.month} onClick={() => setSelected(s.month)}
-            className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors
-              ${selected === s.month ? 'text-white' : 'bg-white text-stone-500 border border-stone-200'}`}
-            style={selected === s.month ? { backgroundColor: '#318086' } : {}}>
-            {monthLabel(s.month)}
-          </button>
-        ))}
-      </div>
 
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map(i => <div key={i} className="h-24 bg-stone-100 rounded-2xl animate-pulse" />)}
         </div>
-      ) : !current ? (
-        <p className="text-stone-400 text-center py-12">Nenhum dado disponível</p>
       ) : (
         <>
-          {/* Summary cards — each is a clickable button */}
-          <div className="space-y-3 mb-5">
-
-            {/* Resultado — big card on top */}
-            <button
-              onClick={() => setDrawerType('resultado')}
-              className="w-full text-left rounded-2xl p-4 text-white active:scale-[0.98] transition-transform"
-              style={
-                current.net_income >= 0
-                  ? { background: 'linear-gradient(135deg,#6ac4b7,#318086)' }
-                  : { background: 'linear-gradient(135deg,#ffb8ad,#e07070)' }
-              }
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium opacity-75">Resultado líquido</p>
-                  <p className="text-3xl font-bold mt-1">{formatBRL(current.net_income)}</p>
-                  <p className="text-xs opacity-60 mt-0.5">{current.consultation_count} consultas no mês</p>
-                </div>
-                <span className="opacity-50 text-xl leading-none">›</span>
-              </div>
-            </button>
-
-            <div className="grid grid-cols-2 gap-3">
-              {/* Receita */}
-              <button
-                onClick={() => setDrawerType('receita')}
-                className="text-left bg-white rounded-2xl p-4 border border-stone-100 shadow-sm active:scale-[0.98] transition-transform"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-stone-400">Receitas</p>
-                    <p className="text-xl font-bold mt-1" style={{ color: '#318086' }}>{formatBRL(current.revenue)}</p>
-                  </div>
-                  <span className="text-stone-300 text-xl leading-none">›</span>
-                </div>
-              </button>
-
-              {/* Despesas */}
-              <button
-                onClick={() => setDrawerType('despesas')}
-                className="text-left bg-white rounded-2xl p-4 border border-stone-100 shadow-sm active:scale-[0.98] transition-transform"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-stone-400">Despesas</p>
-                    <p className="text-xl font-bold text-rose-600 mt-1">{formatBRL(current.expenses_total)}</p>
-                  </div>
-                  <span className="text-stone-300 text-xl leading-none">›</span>
-                </div>
-              </button>
-            </div>
-          </div>
-
-          {/* 12-month net income chart */}
+          {/* 12-month net income chart — above month selector */}
           <NetIncomeChart
             summaries={summaries}
             consultations={consultations}
             selected={selected}
           />
 
-          {/* Expense list (quick view, still shown below) */}
-          {monthExpenses.length > 0 && (
+          {/* New vs returning patients chart */}
+          <NewVsReturningChart
+            summaries={summaries}
+            consultations={consultations}
+            selected={selected}
+          />
+
+          {/* Month selector */}
+          <div className="flex gap-2 overflow-x-auto pb-2 mb-5">
+            {summaries.map(s => (
+              <button key={s.month} onClick={() => setSelected(s.month)}
+                className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors
+                  ${selected === s.month ? 'text-white' : 'bg-white text-stone-500 border border-stone-200'}`}
+                style={selected === s.month ? { backgroundColor: '#318086' } : {}}>
+                {monthLabel(s.month)}
+              </button>
+            ))}
+          </div>
+
+          {!current ? (
+            <p className="text-stone-400 text-center py-12">Nenhum dado disponível</p>
+          ) : (
             <>
-              <h2 className="font-bold text-brand-charcoal mb-3">Despesas do mês</h2>
-              <div className="space-y-2">
-                {monthExpenses.map(e => (
-                  <div key={e.id} className="bg-white rounded-xl p-3 border border-stone-100 flex items-center justify-between">
+              {/* Summary cards */}
+              <div className="space-y-3 mb-5">
+
+                {/* Resultado — big card on top */}
+                <button
+                  onClick={() => setDrawerType('resultado')}
+                  className="w-full text-left rounded-2xl p-4 text-white active:scale-[0.98] transition-transform"
+                  style={
+                    current.net_income >= 0
+                      ? { background: 'linear-gradient(135deg,#6ac4b7,#318086)' }
+                      : { background: 'linear-gradient(135deg,#ffb8ad,#e07070)' }
+                  }
+                >
+                  <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-brand-charcoal capitalize">{e.description}</p>
-                      <p className="text-xs text-stone-400">{new Date(e.date + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
+                      <p className="text-xs font-medium opacity-75">Resultado líquido</p>
+                      <p className="text-3xl font-bold mt-1">{formatBRL(current.net_income)}</p>
+                      <p className="text-xs opacity-60 mt-0.5">{current.consultation_count} consultas no mês</p>
                     </div>
-                    <span className="text-rose-500 font-bold text-sm">- {formatBRL(e.amount)}</span>
+                    <span className="opacity-50 text-xl leading-none">›</span>
                   </div>
-                ))}
+                </button>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Receita */}
+                  <button
+                    onClick={() => setDrawerType('receita')}
+                    className="text-left bg-white rounded-2xl p-4 border border-stone-100 shadow-sm active:scale-[0.98] transition-transform"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-stone-400">Receitas</p>
+                        <p className="text-xl font-bold mt-1" style={{ color: '#318086' }}>{formatBRL(current.revenue)}</p>
+                      </div>
+                      <span className="text-stone-300 text-xl leading-none">›</span>
+                    </div>
+                  </button>
+
+                  {/* Despesas */}
+                  <button
+                    onClick={() => setDrawerType('despesas')}
+                    className="text-left bg-white rounded-2xl p-4 border border-stone-100 shadow-sm active:scale-[0.98] transition-transform"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-stone-400">Despesas</p>
+                        <p className="text-xl font-bold text-rose-600 mt-1">{formatBRL(current.expenses_total)}</p>
+                      </div>
+                      <span className="text-stone-300 text-xl leading-none">›</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Month stats */}
+              <div className="grid grid-cols-3 gap-3 mb-5">
+                <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm text-center">
+                  <p className="text-2xl font-bold" style={{ color: '#318086' }}>{monthConsultations.length}</p>
+                  <p className="text-xs text-stone-400 mt-1 leading-tight">Consultas</p>
+                </div>
+                <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm text-center">
+                  <p className="text-2xl font-bold text-brand-charcoal">{totalPatientCount}</p>
+                  <p className="text-xs text-stone-400 mt-1 leading-tight">Pacientes</p>
+                </div>
+                <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm text-center">
+                  <p className="text-2xl font-bold text-brand-charcoal">{newPatientCount}</p>
+                  <p className="text-xs text-stone-400 mt-1 leading-tight">
+                    Novos
+                    {totalPatientCount > 0 && (
+                      <><br /><span className="font-semibold" style={{ color: '#318086' }}>{Math.round(newPatientCount / totalPatientCount * 100)}%</span></>
+                    )}
+                  </p>
+                </div>
               </div>
             </>
           )}
