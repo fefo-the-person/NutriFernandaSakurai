@@ -38,6 +38,15 @@ export interface Expense {
   created_at: string
 }
 
+export interface OtherIncome {
+  id: string
+  date: string
+  category: string
+  description: string
+  amount: number
+  created_at: string
+}
+
 export interface MonthlySummary {
   month: string
   revenue: number

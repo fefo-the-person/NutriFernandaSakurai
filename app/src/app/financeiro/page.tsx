@@ -1,9 +1,17 @@
 'use client'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { MonthlySummary, Expense, Consultation, ConsultationChannel, formatBRL } from '@/lib/types'
+import { MonthlySummary, Expense, Consultation, ConsultationChannel, OtherIncome, formatBRL } from '@/lib/types'
 
 type DrawerType = 'receita' | 'despesas' | 'resultado' | null
+
+const INCOME_CATEGORY_ICON: Record<string, string> = {
+  Eventos:   '🎪',
+  Palestras: '🎤',
+  Aulas:     '📖',
+  Livros:    '📚',
+  Outro:     '✏️',
+}
 
 interface ConsultationWithPatient extends Consultation {
   patient_name: string
@@ -191,6 +199,7 @@ function Drawer({
   monthLabel,
   consultations,
   expenses,
+  otherIncome,
   onClose,
   onSaveExpense,
   onSaveConsultation,
@@ -200,6 +209,7 @@ function Drawer({
   monthLabel: string
   consultations: ConsultationWithPatient[]
   expenses: Expense[]
+  otherIncome: OtherIncome[]
   onClose: () => void
   onSaveExpense: (e: Expense) => Promise<void>
   onSaveConsultation: (c: ConsultationWithPatient) => Promise<void>
@@ -266,8 +276,10 @@ function Drawer({
           {/* ── Receita: list consultations ── */}
           {(type === 'receita' || type === 'resultado') && (
             <>
-              {type === 'resultado' && (
-                <p className="text-xs font-semibold text-stone-400 uppercase tracking-wide pt-1">Receitas</p>
+              {(type === 'resultado' || otherIncome.length > 0) && (
+                <p className="text-xs font-semibold text-stone-400 uppercase tracking-wide pt-1">
+                  {type === 'resultado' ? 'Receitas' : 'Consultas'}
+                </p>
               )}
               {consultations.length === 0 ? (
                 <p className="text-sm text-stone-400 text-center py-4">Nenhuma consulta neste mês</p>
@@ -308,6 +320,30 @@ function Drawer({
                   </div>
                 ))
               )}
+            </>
+          )}
+
+          {/* ── Outras receitas ── */}
+          {(type === 'receita' || type === 'resultado') && otherIncome.length > 0 && (
+            <>
+              <p className="text-xs font-semibold text-stone-400 uppercase tracking-wide pt-2">Outras receitas</p>
+              {otherIncome.map(inc => (
+                <div key={inc.id} className="bg-stone-50 rounded-2xl p-3 border border-stone-100 flex items-center gap-3">
+                  <span className="text-xl flex-shrink-0">
+                    {INCOME_CATEGORY_ICON[inc.category] ?? '💰'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-brand-charcoal truncate">{inc.description}</p>
+                    <p className="text-xs text-stone-400">
+                      {new Date(inc.date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                      {' · '}{inc.category}
+                    </p>
+                  </div>
+                  <span className="font-bold text-sm flex-shrink-0" style={{ color: '#318086' }}>
+                    {formatBRL(inc.amount)}
+                  </span>
+                </div>
+              ))}
             </>
           )}
 
@@ -482,27 +518,30 @@ function NetIncomeChart({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function FinanceiroPage() {
-  const [summaries, setSummaries]       = useState<MonthlySummary[]>([])
-  const [expenses, setExpenses]         = useState<Expense[]>([])
+  const [summaries, setSummaries]         = useState<MonthlySummary[]>([])
+  const [expenses, setExpenses]           = useState<Expense[]>([])
   const [consultations, setConsultations] = useState<ConsultationWithPatient[]>([])
-  const [selected, setSelected]         = useState('')
-  const [loading, setLoading]           = useState(true)
-  const [drawerType, setDrawerType]     = useState<DrawerType>(null)
-  const [saving, setSaving]             = useState(false)
+  const [otherIncome, setOtherIncome]     = useState<OtherIncome[]>([])
+  const [selected, setSelected]           = useState('')
+  const [loading, setLoading]             = useState(true)
+  const [drawerType, setDrawerType]       = useState<DrawerType>(null)
+  const [saving, setSaving]               = useState(false)
 
 
   const loadData = useCallback(async () => {
-    const [{ data: s }, { data: e }, { data: c }, { data: p }] = await Promise.all([
+    const [{ data: s }, { data: e }, { data: c }, { data: p }, { data: oi }] = await Promise.all([
       supabase.from('monthly_summary').select('*').limit(12),
       supabase.from('expenses').select('*').order('date', { ascending: false }),
       supabase.from('consultations').select('*').order('date', { ascending: false }),
       supabase.from('patients').select('id, name'),
+      supabase.from('other_income').select('*').order('date', { ascending: false }),
     ])
 
     const months = (s ?? []) as MonthlySummary[]
     setSummaries(months)
 
     setExpenses((e ?? []) as Expense[])
+    setOtherIncome((oi ?? []) as OtherIncome[])
 
     const patients = (p ?? []) as { id: string; name: string }[]
     const patientMap = Object.fromEntries(patients.map(pt => [pt.id, pt.name]))
@@ -525,9 +564,10 @@ export default function FinanceiroPage() {
     init()
   }, [loadData])
 
-  const current           = summaries.find(s => s.month === selected)
-  const monthExpenses     = expenses.filter(e => e.date.startsWith(selected))
-  const monthConsultations = consultations.filter(c => c.date.startsWith(selected))
+  const current             = summaries.find(s => s.month === selected)
+  const monthExpenses       = expenses.filter(e => e.date.startsWith(selected))
+  const monthConsultations  = consultations.filter(c => c.date.startsWith(selected))
+  const monthOtherIncome    = otherIncome.filter(i => i.date.startsWith(selected))
 
   function monthLabel(ym: string) {
     const [y, m] = ym.split('-')
@@ -670,6 +710,7 @@ export default function FinanceiroPage() {
           monthLabel={monthLabel(selected)}
           consultations={monthConsultations}
           expenses={monthExpenses}
+          otherIncome={monthOtherIncome}
           saving={saving}
           onClose={() => setDrawerType(null)}
           onSaveExpense={handleSaveExpense}

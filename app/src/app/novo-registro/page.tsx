@@ -27,6 +27,21 @@ export default function NovoRegistroPage() {
           </div>
         </button>
 
+        {/* Receita */}
+        <button
+          onClick={() => router.push('/nova-receita')}
+          className="w-full text-left rounded-2xl p-5 bg-white border border-stone-200 shadow-sm active:scale-[0.98] transition-transform"
+        >
+          <div className="flex items-center gap-4">
+            <span className="text-3xl">💰</span>
+            <div>
+              <p className="font-bold text-lg leading-tight text-brand-charcoal">Receita</p>
+              <p className="text-sm text-stone-400 mt-0.5">Eventos, palestras, aulas, livros…</p>
+            </div>
+            <span className="ml-auto text-stone-300 text-xl">›</span>
+          </div>
+        </button>
+
         {/* Despesa */}
         <button
           onClick={() => router.push('/nova-despesa')}
