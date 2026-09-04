@@ -45,20 +45,20 @@ SELECT
   p.cpf,
   p.name,
   p.notes,
-  MIN(c.date)                                AS first_consultation,
-  MAX(c.date)                                AS last_consultation,
-  COUNT(c.id)                                AS total_consultations,
-  COALESCE(SUM(c.amount), 0)                 AS total_billed,
-  COALESCE(AVG(c.amount), 0)                 AS avg_ticket,
-  CURRENT_DATE - MAX(c.date)                 AS days_since_last,
+  MIN(c.date)                                              AS first_consultation,
+  MAX(c.date)                                              AS last_consultation,
+  COUNT(c.id) FILTER (WHERE c.paid = true)                 AS total_consultations,
+  COALESCE(SUM(c.amount) FILTER (WHERE c.paid = true), 0)  AS total_billed,
+  COALESCE(AVG(c.amount) FILTER (WHERE c.paid = true), 0)  AS avg_ticket,
+  CURRENT_DATE - MAX(c.date)                               AS days_since_last,
   CASE
     WHEN MAX(c.date) IS NULL                         THEN 'Sem consultas'
     WHEN CURRENT_DATE - MAX(c.date) <= 60            THEN 'Ativo'
     WHEN CURRENT_DATE - MAX(c.date) <= 120           THEN 'Em risco'
     ELSE                                                  'Inativo'
-  END                                        AS status
+  END                                                      AS status
 FROM patients p
-LEFT JOIN consultations c ON p.id = c.patient_id AND c.paid = true
+LEFT JOIN consultations c ON p.id = c.patient_id
 GROUP BY p.id, p.cpf, p.name, p.notes;
 
 -- ─────────────────────────────────────────────────────────────
