@@ -18,6 +18,7 @@ function NovaConsultaForm() {
     date:    new Date().toISOString().split('T')[0],
     amount:  '',
     channel: 'PRESENCIAL' as ConsultationChannel,
+    paid:    true,
     notes:   '',
   })
   const [loading, setLoading] = useState(false)
@@ -65,6 +66,7 @@ function NovaConsultaForm() {
       date:       form.date,
       amount:     parseAmount(form.amount),
       channel:    form.channel,
+      paid:       form.paid,
       notes:      form.notes.trim() || null,
     })
     if (err) { setError(err.message); setLoading(false); return }
@@ -167,6 +169,22 @@ function NovaConsultaForm() {
               onChange={e => setForm(f => ({ ...f, amount: formatAmountInput(e.target.value) }))}
               className={`${inputCls} pl-10`} />
           </div>
+        </div>
+
+        {/* ── Paid ── */}
+        <div>
+          <label className="flex items-center gap-3 bg-white border border-stone-200 rounded-xl px-4 py-3.5 cursor-pointer active:bg-stone-50">
+            <input
+              type="checkbox"
+              checked={form.paid}
+              onChange={e => setForm(f => ({ ...f, paid: e.target.checked }))}
+              className="w-5 h-5 rounded accent-[#318086] flex-shrink-0"
+            />
+            <div>
+              <p className="text-sm font-semibold text-brand-charcoal">Pagamento recebido</p>
+              <p className="text-xs text-stone-400">Desmarque se a consulta ainda não foi paga</p>
+            </div>
+          </label>
         </div>
 
         {/* ── Notes ── */}

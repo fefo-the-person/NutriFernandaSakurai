@@ -674,7 +674,7 @@ export default function FinanceiroPage() {
     const [{ data: s }, { data: e }, { data: c }, { data: p }, { data: oi }] = await Promise.all([
       supabase.from('monthly_summary').select('*').limit(12),
       supabase.from('expenses').select('*').order('date', { ascending: false }),
-      supabase.from('consultations').select('*').order('date', { ascending: false }),
+      supabase.from('consultations').select('*').eq('paid', true).order('date', { ascending: false }),
       supabase.from('patients').select('id, name, cpf'),
       supabase.from('other_income').select('*').order('date', { ascending: false }),
     ])

@@ -20,6 +20,7 @@ CREATE TABLE consultations (
   date        DATE NOT NULL,
   amount      NUMERIC(10,2) NOT NULL,
   channel     VARCHAR(20) DEFAULT 'PRESENCIAL' CHECK (channel IN ('ONLINE', 'PRESENCIAL')),
+  paid        BOOLEAN NOT NULL DEFAULT true,
   notes       TEXT,
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
@@ -57,7 +58,7 @@ SELECT
     ELSE                                                  'Inativo'
   END                                        AS status
 FROM patients p
-LEFT JOIN consultations c ON p.id = c.patient_id
+LEFT JOIN consultations c ON p.id = c.patient_id AND c.paid = true
 GROUP BY p.id, p.cpf, p.name, p.notes;
 
 -- ─────────────────────────────────────────────────────────────
@@ -85,6 +86,7 @@ LEFT JOIN (
     SUM(amount)               AS revenue,
     COUNT(*)                  AS consultation_count
   FROM consultations
+  WHERE paid = true
   GROUP BY 1
 ) c ON c.m = months.month
 LEFT JOIN (

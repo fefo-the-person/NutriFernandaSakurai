@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
@@ -14,25 +14,35 @@ export default function DashboardPage() {
   const [monthRevenue, setMonthRevenue]     = useState(0)
   const [activePatients, setActivePatients] = useState(0)
   const [atRiskPatients, setAtRisk]         = useState(0)
+  const [unpaidConsultations, setUnpaid]    = useState<any[]>([])
+  const [markingPaid, setMarkingPaid]       = useState<string | null>(null)
 
   const today      = new Date().toISOString().split('T')[0]
   const monthStart = today.slice(0, 7) + '-01'
 
-  useEffect(() => {
-    async function load() {
-      const [{ data: todayData }, { data: monthData }, { data: crmData }] = await Promise.all([
-        supabase.from('consultations').select('*, patients(name)').eq('date', today).order('created_at', { ascending: false }),
-        supabase.from('consultations').select('amount').gte('date', monthStart),
-        supabase.from('patient_crm').select('status'),
-      ])
-      setToday(todayData ?? [])
-      setMonthRevenue((monthData ?? []).reduce((s: number, c: any) => s + c.amount, 0))
-      setActivePatients((crmData ?? []).filter((p: any) => p.status === 'Ativo').length)
-      setAtRisk((crmData ?? []).filter((p: any) => p.status === 'Em risco').length)
-      setLoading(false)
-    }
-    load()
+  const load = useCallback(async () => {
+    const [{ data: todayData }, { data: monthData }, { data: crmData }, { data: unpaidData }] = await Promise.all([
+      supabase.from('consultations').select('*, patients(name)').eq('date', today).order('created_at', { ascending: false }),
+      supabase.from('consultations').select('amount').eq('paid', true).gte('date', monthStart),
+      supabase.from('patient_crm').select('status'),
+      supabase.from('consultations').select('*, patients(name)').eq('paid', false).order('date', { ascending: false }),
+    ])
+    setToday(todayData ?? [])
+    setMonthRevenue((monthData ?? []).reduce((s: number, c: any) => s + c.amount, 0))
+    setActivePatients((crmData ?? []).filter((p: any) => p.status === 'Ativo').length)
+    setAtRisk((crmData ?? []).filter((p: any) => p.status === 'Em risco').length)
+    setUnpaid(unpaidData ?? [])
+    setLoading(false)
   }, [today, monthStart])
+
+  useEffect(() => { load() }, [load])
+
+  async function markAsPaid(id: string) {
+    setMarkingPaid(id)
+    await supabase.from('consultations').update({ paid: true }).eq('id', id)
+    await load()
+    setMarkingPaid(null)
+  }
 
   const hour     = new Date().getHours()
   const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite'
@@ -93,24 +103,16 @@ export default function DashboardPage() {
       )}
 
       {/* Today */}
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="font-bold text-brand-charcoal">Consultas hoje</h2>
-        <Link href="/nova-consulta" className="text-sm font-medium" style={{ color: '#318086' }}>+ Registrar</Link>
-      </div>
+      <h2 className="font-bold text-brand-charcoal mb-3">Consultas hoje</h2>
 
       {loading ? (
         <div className="space-y-3">
           {[1,2].map(i => <div key={i} className="h-16 bg-stone-100 rounded-2xl animate-pulse" />)}
         </div>
       ) : todayConsultations.length === 0 ? (
-        <div className="text-center py-12 text-stone-400">
+        <div className="text-center py-10 text-stone-400">
           <p className="text-4xl mb-3">📋</p>
           <p className="text-sm">Nenhuma consulta registrada hoje</p>
-          <Link href="/nova-consulta"
-            className="mt-4 inline-block px-5 py-2.5 text-white rounded-xl text-sm font-medium"
-            style={{ backgroundColor: '#318086' }}>
-            Registrar consulta
-          </Link>
         </div>
       ) : (
         <div className="space-y-3">
@@ -129,6 +131,11 @@ export default function DashboardPage() {
                       <span className={`text-xs font-medium ${ch.bg} ${ch.text} px-2 py-0.5 rounded-full`}>
                         {ch.icon} {ch.label}
                       </span>
+                      {!c.paid && (
+                        <span className="text-xs font-medium bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full ml-1">
+                          Pendente
+                        </span>
+                      )}
                     </div>
                   </div>
                   <span className="font-bold text-sm" style={{ color: '#318086' }}>{formatBRL(c.amount)}</span>
@@ -136,6 +143,38 @@ export default function DashboardPage() {
               </Link>
             )
           })}
+        </div>
+      )}
+
+      {/* Pending payments */}
+      {!loading && unpaidConsultations.length > 0 && (
+        <div className="mt-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-bold text-brand-charcoal">Pagamentos pendentes</h2>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+              {unpaidConsultations.length}
+            </span>
+          </div>
+          <div className="space-y-3">
+            {unpaidConsultations.map((c: any) => (
+              <div key={c.id} className="bg-white rounded-2xl p-4 shadow-sm border border-amber-200 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm text-brand-charcoal truncate">{c.patients?.name}</p>
+                  <p className="text-xs text-stone-400 mt-0.5">{formatDate(c.date)}</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className="font-bold text-sm text-amber-700">{formatBRL(c.amount)}</span>
+                  <button
+                    onClick={() => markAsPaid(c.id)}
+                    disabled={markingPaid === c.id}
+                    className="text-xs font-semibold px-3 py-2 rounded-lg text-white active:opacity-80 disabled:opacity-50 transition-opacity"
+                    style={{ backgroundColor: '#318086' }}>
+                    {markingPaid === c.id ? '...' : 'Marcar pago'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

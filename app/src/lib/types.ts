@@ -25,6 +25,7 @@ export interface Consultation {
   date: string
   amount: number
   channel: ConsultationChannel
+  paid: boolean
   notes: string | null
   created_at: string
 }

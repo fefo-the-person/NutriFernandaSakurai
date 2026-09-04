@@ -33,9 +33,11 @@ export default function PatientDetailPage() {
     `Olá ${patient.name.split(' ')[0]}! Tudo bem? Estou entrando em contato para verificar como você está e agendar sua próxima consulta. 😊`
   )
 
-  // Breakdown by channel
-  const onlineCount      = history.filter(c => c.channel === 'ONLINE').length
-  const presencialCount  = history.filter(c => c.channel === 'PRESENCIAL').length
+  // Breakdown by channel — paid consultations only, to stay consistent with
+  // the totals above (which come from patient_crm and are also paid-only)
+  const paidHistory      = history.filter(c => c.paid)
+  const onlineCount      = paidHistory.filter(c => c.channel === 'ONLINE').length
+  const presencialCount  = paidHistory.filter(c => c.channel === 'PRESENCIAL').length
 
   return (
     <div className="pb-4">
@@ -130,6 +132,11 @@ export default function PatientDetailPage() {
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ch.bg} ${ch.text}`}>
                       {ch.icon} {ch.label}
                     </span>
+                    {!c.paid && (
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 ml-1.5">
+                        Pendente
+                      </span>
+                    )}
                     {c.notes && <p className="text-xs text-stone-400 mt-1 truncate max-w-[200px]">{c.notes}</p>}
                   </div>
                   <span className="font-bold text-sm" style={{ color: '#318086' }}>{formatBRL(c.amount)}</span>
