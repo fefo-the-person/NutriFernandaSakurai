@@ -158,10 +158,10 @@ export default function DashboardPage() {
           <div className="space-y-3">
             {unpaidConsultations.map((c: any) => (
               <div key={c.id} className="bg-white rounded-2xl p-4 shadow-sm border border-amber-200 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-semibold text-sm text-brand-charcoal truncate">{c.patients?.name}</p>
+                <Link href={`/pacientes/${c.patient_id}`} className="min-w-0 active:opacity-70">
+                  <p className="font-semibold text-sm text-brand-charcoal truncate underline decoration-stone-300 underline-offset-2">{c.patients?.name}</p>
                   <p className="text-xs text-stone-400 mt-0.5">{formatDate(c.date)}</p>
-                </div>
+                </Link>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <span className="font-bold text-sm text-amber-700">{formatBRL(c.amount)}</span>
                   <button
