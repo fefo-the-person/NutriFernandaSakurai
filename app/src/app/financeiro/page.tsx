@@ -106,11 +106,13 @@ function EditConsultationForm({
   consultation,
   onSave,
   onCancel,
+  onDelete,
   saving,
 }: {
   consultation: ConsultationWithPatient
   onSave: (c: ConsultationWithPatient) => void
   onCancel: () => void
+  onDelete: () => void
   saving: boolean
 }) {
   const [form, setForm] = useState({ ...consultation })
@@ -189,6 +191,18 @@ function EditConsultationForm({
           {saving ? 'Salvando…' : 'Salvar'}
         </button>
       </div>
+
+      <button
+        onClick={() => {
+          if (window.confirm('Excluir esta consulta? Essa ação não pode ser desfeita.')) {
+            onDelete()
+          }
+        }}
+        disabled={saving}
+        className="w-full py-2 rounded-xl text-sm font-semibold text-rose-500 border border-rose-200 bg-white transition-opacity disabled:opacity-60"
+      >
+        Excluir consulta
+      </button>
     </div>
   )
 }
@@ -204,6 +218,7 @@ function Drawer({
   onClose,
   onSaveExpense,
   onSaveConsultation,
+  onDeleteConsultation,
   saving,
 }: {
   type: DrawerType
@@ -214,6 +229,7 @@ function Drawer({
   onClose: () => void
   onSaveExpense: (e: Expense) => Promise<void>
   onSaveConsultation: (c: ConsultationWithPatient) => Promise<void>
+  onDeleteConsultation: (id: string) => Promise<void>
   saving: boolean
 }) {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
@@ -294,6 +310,10 @@ function Drawer({
                         onCancel={() => setEditingConsultation(null)}
                         onSave={async updated => {
                           await onSaveConsultation(updated)
+                          setEditingConsultation(null)
+                        }}
+                        onDelete={async () => {
+                          await onDeleteConsultation(editingConsultation.id)
                           setEditingConsultation(null)
                         }}
                       />
@@ -741,6 +761,13 @@ export default function FinanceiroPage() {
     setSaving(false)
   }
 
+  async function handleDeleteConsultation(id: string) {
+    setSaving(true)
+    await supabase.from('consultations').delete().eq('id', id)
+    await loadData()
+    setSaving(false)
+  }
+
   // Month stats derived from consultations
   const monthPatientIds   = new Set(monthConsultations.map(c => c.patient_id))
   const firstVisitMap: Record<string, string> = {}
@@ -885,6 +912,7 @@ export default function FinanceiroPage() {
           onClose={() => setDrawerType(null)}
           onSaveExpense={handleSaveExpense}
           onSaveConsultation={handleSaveConsultation}
+          onDeleteConsultation={handleDeleteConsultation}
         />
       )}
     </div>
